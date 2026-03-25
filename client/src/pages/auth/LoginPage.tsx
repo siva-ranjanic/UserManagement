@@ -141,6 +141,40 @@ const LoginPage: React.FC = () => {
               </button>
             </form>
 
+            <div className="relative my-8">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200"></div>
+              </div>
+              <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest">
+                <span className="bg-white px-4 text-gray-500">Or continue with</span>
+              </div>
+            </div>
+
+            <div className="flex justify-center gap-6">
+              <button
+                type="button"
+                onClick={() => window.location.href = 'http://localhost:9000/api/auth/google'}
+                className="group flex flex-col items-center gap-2"
+                title="Google"
+              >
+                <div className="w-14 h-14 flex items-center justify-center border border-gray-100 rounded-2xl hover:bg-white hover:shadow-xl hover:shadow-indigo-500/10 hover:border-indigo-400 hover:-translate-y-1 transition-all duration-300 bg-gray-50/50">
+                  <img src="https://img.icons8.com/color/48/000000/google-logo.png" className="w-8 h-8 group-hover:scale-110 transition-transform" alt="Google" />
+                </div>
+                <span className="text-[10px] uppercase font-bold tracking-widest text-gray-400 group-hover:text-indigo-600 transition-colors">Google</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.href = 'http://localhost:9000/api/auth/github'}
+                className="group flex flex-col items-center gap-2"
+                title="GitHub"
+              >
+                <div className="w-14 h-14 flex items-center justify-center border border-gray-100 rounded-2xl hover:bg-white hover:shadow-xl hover:shadow-slate-500/10 hover:border-slate-400 hover:-translate-y-1 transition-all duration-300 bg-gray-50/50">
+                  <img src="https://img.icons8.com/ios-filled/50/000000/github.png" className="w-8 h-8 group-hover:scale-110 transition-transform" alt="GitHub" />
+                </div>
+                <span className="text-[10px] uppercase font-bold tracking-widest text-gray-400 group-hover:text-slate-900 transition-colors">GitHub</span>
+              </button>
+            </div>
+
             <div className="mt-8 pt-8 border-t border-gray-100">
                <div className="flex items-center justify-center gap-6 text-gray-400 grayscale">
                   <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase">

@@ -127,6 +127,10 @@ export class UsersController {
       throw new NotFoundException('User not found');
     }
 
+    if (!user.passwordHash) {
+      return Result.failure('Accounts created via SSO cannot be deleted with a password. Please contact support.', HttpStatus.BAD_REQUEST);
+    }
+
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
       return Result.failure('Invalid current password', HttpStatus.BAD_REQUEST);

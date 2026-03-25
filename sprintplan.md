@@ -5,9 +5,9 @@
 
 Sprint Duration: **2 Weeks**
 
-Total Sprints: **6**
+Total Sprints: **7**
 
-Total Project Duration: **12 Weeks**
+Total Project Duration: **14 Weeks**
 
 Development priority:
 
@@ -17,6 +17,7 @@ Development priority:
 4 RBAC  
 5 Sessions & Security  
 6 Audit Logs  
+7 SSO (Single Sign-On)
 
 ---
 

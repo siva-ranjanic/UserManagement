@@ -1,4 +1,5 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Get, Delete, Param } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards, Request, Get, Delete, Param, Query, Response } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -12,6 +13,35 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+ 
+  // --- SSO ROUTES ---
+  @Get('google')
+  @SkipThrottle()
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Login with Google' })
+  async googleAuth(@Request() req) {}
+
+  @Get('google/callback')
+  @SkipThrottle()
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Google auth callback' })
+  async googleAuthRedirect(@Request() req, @Response() res) {
+    return this.handleSsoRedirect(req, res, 'google');
+  }
+
+  @Get('github')
+  @SkipThrottle()
+  @UseGuards(AuthGuard('github'))
+  @ApiOperation({ summary: 'Login with GitHub' })
+  async githubAuth(@Request() req) {}
+
+  @Get('github/callback')
+  @SkipThrottle()
+  @UseGuards(AuthGuard('github'))
+  @ApiOperation({ summary: 'GitHub auth callback' })
+  async githubAuthRedirect(@Request() req, @Response() res) {
+    return this.handleSsoRedirect(req, res, 'github');
+  }
 
   @Post('login')
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // Strict: 5 attempts per minute
@@ -148,6 +178,21 @@ export class AuthController {
     } catch (error) {
       return Result.failure(error.message, HttpStatus.BAD_REQUEST);
     }
+  }
+
+
+  private async handleSsoRedirect(req: any, res: any, provider: string) {
+    const ssoUser = req.user;
+    const ip = req.ip || req.connection.remoteAddress;
+    const device = req.headers['user-agent'] || 'Unknown Device';
+
+    const user = await this.authService.validateSsoUser(ssoUser, provider);
+    const authData = await this.authService.loginSso(user, ip, device);
+
+    // Redirect to frontend with tokens
+    // In production, use meaningful redirect and secure cookies or query params
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    return res.redirect(`${frontendUrl}/sso-callback?token=${authData.accessToken}&refreshToken=${authData.refreshToken}`);
   }
 }
 

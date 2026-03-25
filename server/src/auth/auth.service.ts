@@ -29,6 +29,61 @@ export class AuthService {
   ) {}
 
 
+  async loginSso(user: any, ipAddress: string, device: string) {
+    const roleNames = (user.roles || []).map(r => typeof r === 'object' ? (r as any).name : r);
+    const payload = { email: user.email, sub: user._id, roles: roleNames };
+    
+    const tokenFamily = crypto.randomBytes(32).toString('hex');
+    const session = new this.sessionModel({
+      _id: RandomNumberGenerator.getUniqueId(),
+      userId: user._id,
+      tokenFamily,
+      ipAddress,
+      device,
+      lastActivity: new Date(),
+    });
+
+    await session.save();
+
+    await this.auditService.log({
+      actorId: user._id.toString(),
+      action: AuditAction.LOGIN,
+      resource: 'auth',
+      resourceId: session._id.toString(),
+      ipAddress,
+      userAgent: device,
+      status: 'SUCCESS',
+      newValues: { note: `SSO Login via ${user.ssoProvider}` },
+    });
+
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+    const refreshToken = this.jwtService.sign(
+      { sub: user._id, sessionId: session._id, family: tokenFamily },
+      { expiresIn: '30d' },
+    );
+
+    await this.usersService.update(user._id.toString(), { lastLogin: new Date() } as any);
+
+    const userRoles = user.roles || [];
+    const primaryRole = userRoles.length > 0 
+      ? (typeof userRoles[0] === 'object' ? (userRoles[0] as any).name : userRoles[0])
+      : 'User';
+
+    return {
+      accessToken,
+      refreshToken,
+      session_id: session._id,
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        roles: user.roles,
+        role: primaryRole
+      },
+    };
+  }
+
   async login(loginDto: LoginDto, ipAddress: string, device: string) {
     const { email, password } = loginDto;
     const user = await this.usersService.findByEmail(email);
@@ -54,6 +109,10 @@ export class AuthService {
     if (user.lockUntil && user.lockUntil > new Date()) {
       const remainingMinutes = Math.ceil((user.lockUntil.getTime() - Date.now()) / 60000);
       throw new UnauthorizedException(`Account is temporarily locked. Try again in ${remainingMinutes} minutes.`);
+    }
+
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('This account uses SSO. Please sign in with Google or GitHub.');
     }
 
     const isPasswordMatching = await bcrypt.compare(password, user.passwordHash);
@@ -203,6 +262,10 @@ export class AuthService {
     const user = await this.usersService.findById(userId);
     if (!user) {
       throw new UnauthorizedException('User not found');
+    }
+
+    if (!user.passwordHash) {
+      throw new BadRequestException('Accounts created via SSO do not have a local password to change.');
     }
 
     const isMatch = await bcrypt.compare(changePasswordDto.oldPassword, user.passwordHash);
@@ -391,6 +454,60 @@ export class AuthService {
         role: primaryRole
       },
     };
+  }
+
+  async validateSsoUser(ssoData: any, provider: string) {
+    const { email, firstName, lastName, ssoId, picture } = ssoData;
+    
+    let user = await this.usersService.findByEmail(email);
+
+    if (user) {
+      // Link SS0 if not already linked
+      if (!user.ssoId || user.ssoProvider === 'none') {
+        user = await this.usersService.update(user._id.toString(), {
+          ssoId,
+          ssoProvider: provider,
+          avatar: picture || user.avatar,
+        } as any);
+      }
+    } else {
+      // Auto-register new SSO user
+      // 1. Fetch 'User' role
+      let defaultRoles: any[] = [];
+      const userRole = await this.usersService['roleModel'].findOne({ 
+        name: { $regex: new RegExp(`^User$`, 'i') } 
+      }).exec();
+      
+      if (userRole) {
+        defaultRoles = [userRole._id];
+      }
+
+      // 2. Create user (password-less)
+      const newUser = new this.usersService['userModel']({
+        _id: RandomNumberGenerator.getUniqueId(),
+        firstName,
+        lastName,
+        email,
+        roles: defaultRoles,
+        isVerified: true, // SSO users are verified by the provider
+        ssoId,
+        ssoProvider: provider,
+        avatar: picture,
+      });
+
+      user = await newUser.save();
+
+      await this.auditService.log({
+        action: AuditAction.USER_CREATE,
+        resource: 'users',
+        resourceId: user._id,
+        ipAddress: 'N/A',
+        status: 'SUCCESS',
+        newValues: { ...user.toObject(), note: 'Created via SSO' },
+      });
+    }
+
+    return user;
   }
 }
 

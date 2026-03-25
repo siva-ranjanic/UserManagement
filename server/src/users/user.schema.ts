@@ -18,11 +18,17 @@ export class User {
   @Prop({ required: true })
   lastName: string;
 
-  @Prop({ required: true, unique: true })
+  @Prop({ unique: true })
   email: string;
 
-  @Prop({ required: true })
-  passwordHash: string;
+  @Prop()
+  passwordHash?: string;
+
+  @Prop({ enum: ['none', 'google', 'github'], default: 'none' })
+  ssoProvider: string;
+
+  @Prop()
+  ssoId?: string;
 
   @Prop()
   avatar?: string;

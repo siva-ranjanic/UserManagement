@@ -7,13 +7,15 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
+import { GithubStrategy } from './strategies/github.strategy';
 import { PasswordReset, PasswordResetSchema } from './password-reset.schema';
 import { Session, SessionSchema } from './session.schema';
 
 @Module({
   imports: [
     UsersModule,
-    PassportModule,
+    PassportModule.register({ defaultStrategy: 'jwt' }),
     MongooseModule.forFeature([
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: Session.name, schema: SessionSchema },
@@ -29,7 +31,7 @@ import { Session, SessionSchema } from './session.schema';
       }),
     }),
   ],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, GoogleStrategy, GithubStrategy],
   controllers: [AuthController],
   exports: [AuthService],
 })
