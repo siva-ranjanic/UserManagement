@@ -1,0 +1,37 @@
+# Roots
+node_modules/
+dist/
+build/
+.env
+.tmp
+.temp
+
+# Client
+client/node_modules/
+client/dist/
+client/dist-ssr/
+client/*.local
+
+# Server
+server/node_modules/
+server/dist/
+server/build/
+server/coverage/
+server/.nyc_output
+server/.env
+server/*.seed
+server/*.pid
+server/*.pid.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

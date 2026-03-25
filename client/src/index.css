@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap');
+@import "tailwindcss";
+
+
+@theme {
+  --color-primary: #00236f;
+  --color-primary-container: #1e3a8a;
+  --color-surface: #f7f9fb;
+  --color-surface-container-low: #f2f4f6;
+  --color-surface-container-highest: #e0e3e5;
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #444651;
+  --color-outline-variant: #c5c5d3;
+  --color-error: #ba1a1a;
+  
+  --font-display: "Manrope", sans-serif;
+  --font-body: "Inter", sans-serif;
+  
+  --radius-default: 4px;
+  --radius-lg: 8px;
+}
+
+:root {
+  font-family: inherit;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+body {
+  @apply bg-surface text-on-surface font-body m-0 min-h-screen antialiased;
+}
+
+h1, h2, h3, h4, .display-text {
+  @apply font-display font-bold;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   ARCHITECTURAL AUTHORITY COMPONENTS
+   ────────────────────────────────────────────────────────────────────────── */
+
+.btn-primary {
+  @apply bg-[#1e3a8a] hover:bg-[#1e40af] text-white px-6 py-3 rounded-lg font-bold transition-all duration-300 shadow-lg shadow-blue-900/20 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2;
+}
+
+.btn-secondary {
+  @apply bg-surface-container-low text-on-surface px-6 py-2 rounded-lg transition-all duration-300 hover:bg-surface-container-highest active:scale-95 flex items-center justify-center gap-2;
+}
+
+.input-field {
+  @apply w-full bg-white border border-gray-200 rounded-lg px-4 py-3 text-on-surface focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all placeholder:text-gray-400;
+}
+
+/* Ensure padding utilities override the default px-4 from @apply */
+input.pl-12 { padding-left: 3rem !important; }
+input.pl-14 { padding-left: 3.5rem !important; }
+input.pr-10 { padding-right: 2.5rem !important; }
+input.pr-12 { padding-right: 3rem !important; }
+input.pr-14 { padding-right: 3.5rem !important; }
+
+
+.card {
+  @apply bg-white rounded-xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border border-gray-100 overflow-hidden;
+}
+
+/* Minimalist selection style */
+::selection {
+  @apply bg-primary/20 text-primary;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-surface;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-outline-variant/30 rounded-full hover:bg-outline-variant/50;
+}
