@@ -71,5 +71,11 @@ export const verifyEmail = async (token: string): Promise<any> => {
   return data as any;
 };
 
+/** Accept invitation and set password */
+export const acceptInvitation = async (payload: { token: string, password: any }): Promise<any> => {
+  const data = await axiosInstance.post('/auth/accept-invitation', payload);
+  return data as any;
+};
+
 
 

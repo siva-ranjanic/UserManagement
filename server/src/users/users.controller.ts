@@ -6,6 +6,7 @@ import { extname } from 'path';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
 import { Result } from '../common/entities/api-response.entity';
 import { HttpStatus } from '../common/utils/httpstatus';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
@@ -33,6 +34,33 @@ export class UsersController {
       }
       // Removed specific error details as per instruction 2
       return Result.failure('Failed to register user.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('invite')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Invite a new user (Admin only)' })
+  @ApiResponse({ status: 201, description: 'User successfully invited.' })
+  @ApiResponse({ status: 403, description: 'Forbidden. Admin role required.' })
+  @ApiResponse({ status: 409, description: 'Email already exists.' })
+  async invite(@Request() req, @Body() inviteUserDto: InviteUserDto): Promise<Result<any>> {
+    // Check if requester is Admin
+    const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [];
+    const isAdmin = userRoles.some(r => r.toLowerCase() === 'admin');
+    
+    if (!isAdmin) {
+      return Result.failure('Access denied. Administrator privileges required.', HttpStatus.FORBIDDEN);
+    }
+
+    try {
+      const user = await this.usersService.invite(inviteUserDto);
+      return Result.success(user);
+    } catch (error) {
+      if (error.status === 409) {
+        return Result.failure('Email already exists.', HttpStatus.CONFLICT);
+      }
+      return Result.failure('Failed to invite user.', HttpStatus.INTERNAL_SERVER_ERROR, error.message);
     }
   }
 
@@ -138,5 +166,41 @@ export class UsersController {
 
     await this.usersService.remove(req.user.userId);
     return Result.success({ message: 'User profile deleted successfully' });
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/resend-invitation')
+  @ApiOperation({ summary: 'Resend invitation email' })
+  async resendInvitation(@Request() req, @Body('id') idParam: string): Promise<Result<any>> {
+    const id = req.params.id || idParam;
+    // Check if requester is Admin
+    const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [];
+    const isAdmin = userRoles.some(r => r.toLowerCase() === 'admin');
+    if (!isAdmin) return Result.failure('Admin privileges required', HttpStatus.FORBIDDEN);
+
+    try {
+      const result = await this.usersService.resendInvitation(id);
+      return Result.success(result);
+    } catch (error) {
+      return Result.failure(error.message, error.status || HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/revoke-invitation')
+  @ApiOperation({ summary: 'Revoke a pending invitation' })
+  async revokeInvitation(@Request() req, @Body('id') idParam: string): Promise<Result<any>> {
+    const id = req.params.id || idParam;
+    // Check if requester is Admin
+    const userRoles = Array.isArray(req.user.roles) ? req.user.roles : [];
+    const isAdmin = userRoles.some(r => r.toLowerCase() === 'admin');
+    if (!isAdmin) return Result.failure('Admin privileges required', HttpStatus.FORBIDDEN);
+
+    try {
+      const result = await this.usersService.revokeInvitation(id);
+      return Result.success(result);
+    } catch (error) {
+      return Result.failure(error.message, error.status || HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 }

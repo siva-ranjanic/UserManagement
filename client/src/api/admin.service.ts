@@ -48,29 +48,29 @@ export interface BulkStatusPayload {
 
 /** List all users with search, filter and pagination */
 export const getUsers = async (params: AdminUserListParams = {}): Promise<PaginatedUsers> => {
-  const data = await axiosInstance.get<PaginatedUsers>('/admin/users', { params });
-  return data;
+  const data = await axiosInstance.get<any>('/admin/users', { params });
+  return data as unknown as PaginatedUsers;
 };
 
 
 /** Get a single user by ID */
 export const getUserById = async (id: string): Promise<UserProfile> => {
-  const data = await axiosInstance.get<UserProfile>(`/admin/users/${id}`);
-  return data;
+  const data = await axiosInstance.get<any>(`/admin/users/${id}`);
+  return data as unknown as UserProfile;
 };
 
 
 /** Create a new user (admin action) */
 export const createUser = async (payload: CreateAdminUserPayload): Promise<UserProfile> => {
-  const data = await axiosInstance.post<UserProfile>('/admin/users', payload);
-  return data;
+  const data = await axiosInstance.post<any>('/admin/users', payload);
+  return data as unknown as UserProfile;
 };
 
 
 /** Update a user (admin action) */
 export const updateUser = async (id: string, payload: UpdateAdminUserPayload): Promise<UserProfile> => {
-  const data = await axiosInstance.patch<UserProfile>(`/admin/users/${id}`, payload);
-  return data;
+  const data = await axiosInstance.patch<any>(`/admin/users/${id}`, payload);
+  return data as unknown as UserProfile;
 };
 
 
@@ -105,6 +105,24 @@ export const bulkSoftDelete = async (payload: BulkActionPayload) => {
 /** Bulk status update */
 export const bulkUpdateStatus = async (payload: BulkStatusPayload) => {
   const data = await axiosInstance.patch('/admin/users/bulk/status', payload);
+  return data;
+};
+
+/** Invite a new user (Admin only) */
+export const inviteUser = async (payload: { firstName: string, lastName: string, email: string, role: string }): Promise<UserProfile> => {
+  const data = await axiosInstance.post<any>('/users/invite', payload);
+  return data as unknown as UserProfile;
+};
+
+/** Resend invitation email */
+export const resendInvitation = async (id: string) => {
+  const data = await axiosInstance.post<any>(`/users/${id}/resend-invitation`);
+  return data;
+};
+
+/** Revoke a pending invitation */
+export const revokeInvitation = async (id: string) => {
+  const data = await axiosInstance.post<any>(`/users/${id}/revoke-invitation`);
   return data;
 };
 

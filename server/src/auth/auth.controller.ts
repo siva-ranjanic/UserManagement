@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/reset-password.dto';
+import { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { Result } from '../common/entities/api-response.entity';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -56,10 +57,11 @@ export class AuthController {
       const data = await this.authService.login(loginDto, ip, device);
       return Result.success(data);
     } catch (error) {
-      if (error.status === HttpStatus.UNAUTHORIZED) {
-        return Result.failure(error.message, HttpStatus.UNAUTHORIZED);
-      }
-      return Result.failure('Internal server error', HttpStatus.INTERNAL_SERVER_ERROR, error.message);
+      const response = error.getResponse ? error.getResponse() : null;
+      const message = typeof response === 'object' && response?.message ? response.message : error.message;
+      const status = error.status || HttpStatus.INTERNAL_SERVER_ERROR;
+      
+      return Result.failure(message, status, response);
     }
   }
 
@@ -158,6 +160,25 @@ export class AuthController {
   async revokeAllSessions(@Request() req): Promise<Result<any>> {
     await this.authService.revokeAllSessions(req.user.userId);
     return Result.success({ message: 'All sessions revoked successfully' });
+  }
+
+  @Post('accept-invitation')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Accept invitation and set password' })
+  @ApiResponse({ status: 200, description: 'Invitation accepted successfully and user logged in.' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired token.' })
+  async acceptInvitation(
+    @Request() req,
+    @Body() acceptInvitationDto: AcceptInvitationDto,
+  ): Promise<Result<any>> {
+    try {
+      const ip = req.ip || req.connection.remoteAddress;
+      const device = req.headers['user-agent'] || 'Unknown Device';
+      const data = await this.authService.acceptInvitation(acceptInvitationDto, ip, device);
+      return Result.success(data);
+    } catch (error) {
+      return Result.failure(error.message, HttpStatus.BAD_REQUEST);
+    }
   }
 
   @Get('verify-email')

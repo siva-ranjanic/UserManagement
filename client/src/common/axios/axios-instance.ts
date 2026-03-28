@@ -50,8 +50,16 @@ axiosInstance.interceptors.response.use(
         return result.data; // Return just the payload
       } else {
         // Handle explicit failure returned with 2xx status (unlikely but safe)
-        const message = result.error?.message || 'Operation failed';
-        return Promise.reject(new Error(message));
+        // Preserve and flatten all error properties (type, statusCode, details, etc.)
+        const errorDetails = result.error || {};
+        const details = errorDetails.details || {};
+        const message = errorDetails.message || 'Operation failed';
+        
+        return Promise.reject({ 
+          ...errorDetails, 
+          ...details, 
+          message 
+        });
       }
     }
     return response.data;
@@ -112,10 +120,14 @@ axiosInstance.interceptors.response.use(
     }
 
     // Transform error response into a consistent shape
-    const message =
-      (error.response?.data as { message?: string })?.message ||
-      error.message ||
-      'An unexpected error occurred.';
+    const errorData = error.response?.data as any;
+    const message = errorData?.message || error.message || 'An unexpected error occurred.';
+    
+    // Reject with the enhanced data if it exists
+    if (errorData && typeof errorData === 'object') {
+      return Promise.reject({ ...errorData, message });
+    }
+    
     return Promise.reject(new Error(message));
   },
 );

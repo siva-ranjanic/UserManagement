@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Mail, Lock, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import SessionConflictModal from '../../components/auth/SessionConflictModal';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -9,6 +10,7 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showConflictModal, setShowConflictModal] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -30,7 +32,39 @@ const LoginPage: React.FC = () => {
         navigate('/profile');
       }
     } catch (err: any) {
+      console.log('Login Error Received:', err);
+      // Robust detection of concurrent session
+      const isConcurrent = err.type === 'CONCURRENT_SESSION' || 
+                          err.code === 409 || 
+                          err.statusCode === 409 || 
+                          err.message?.toLowerCase().includes('active session');
 
+      if (isConcurrent) {
+        setShowConflictModal(true);
+      } else {
+        setError(err.message || 'Authentication failed. Please check your credentials.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForceLogin = async () => {
+    setShowConflictModal(false);
+    setLoading(true);
+    setError('');
+    
+    try {
+      const user = await login(email, password, true);
+      const userRoles = Array.isArray(user?.roles) ? user.roles.map((r: any) => typeof r === 'object' ? r.name : r) : [];
+      const isAdmin = userRoles.includes('Admin') || userRoles.includes('admin') || user?.role === 'admin' || user?.role === 'Admin';
+
+      if (isAdmin) {
+        navigate('/admin/analytics');
+      } else {
+        navigate('/profile');
+      }
+    } catch (err: any) {
       setError(err.message || 'Authentication failed. Please check your credentials.');
     } finally {
       setLoading(false);
@@ -205,6 +239,12 @@ const LoginPage: React.FC = () => {
           <Link to="#" className="hover:text-blue-900 transition-colors">SYSTEM STATUS</Link>
         </div>
       </div>
+
+      <SessionConflictModal 
+        isOpen={showConflictModal}
+        onConfirm={handleForceLogin}
+        onCancel={() => setShowConflictModal(false)}
+      />
     </div>
   );
 };

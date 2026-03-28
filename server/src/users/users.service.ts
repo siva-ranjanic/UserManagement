@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from './user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { InviteUserDto } from './dto/invite-user.dto';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/audit-log.schema';
 import { MailService } from '../mail/mail.service';
@@ -89,6 +90,67 @@ export class UsersService {
     return savedUser.toObject(); // return plain object
 
 
+  }
+
+  async invite(inviteUserDto: InviteUserDto): Promise<any> {
+    const { firstName, lastName, email, role: requestedRole } = inviteUserDto;
+
+    const existingUser = await this.userModel.findOne({ email }).exec();
+    if (existingUser) {
+      throw new ConflictException('Email already exists');
+    }
+
+    // Fetch role (case-insensitive)
+    let defaultRoles: any[] = [];
+    const roleName = requestedRole || 'User';
+    const userRoleInfo = await this.roleModel.findOne({ 
+      name: { $regex: new RegExp(`^${roleName}$`, 'i') } 
+    }).exec();
+    
+    if (userRoleInfo) {
+      defaultRoles = [userRoleInfo._id];
+    } else {
+      const userFallback = await this.roleModel.findOne({ 
+        name: { $regex: new RegExp(`^User$`, 'i') } 
+      }).exec();
+      if (userFallback) {
+        defaultRoles = [userFallback._id];
+      }
+    }
+
+    const verificationToken = RandomNumberGenerator.getUniqueId();
+    const verificationExpires = new Date();
+    verificationExpires.setHours(verificationExpires.getHours() + 48); // Invitations last 48 hours
+
+    const createdUser = new this.userModel({
+      _id: RandomNumberGenerator.getUniqueId(),
+      firstName,
+      lastName,
+      email,
+      roles: defaultRoles,
+      isVerified: false,
+      verificationToken,
+      verificationExpires,
+    });
+
+    const savedUser = await createdUser.save();
+
+    await this.auditService.log({
+      action: AuditAction.USER_CREATE,
+      resource: 'users',
+      resourceId: savedUser._id,
+      ipAddress: 'N/A',
+      status: 'SUCCESS',
+      newValues: { ...savedUser.toObject(), note: 'Created via Invitation' },
+    });
+
+    try {
+      await this.mailService.sendInvitationEmail(savedUser.email, verificationToken, firstName);
+    } catch (mailError) {
+      console.error(`[CRITICAL] Invitation mail failed for ${savedUser.email}, but user was created.`, mailError.message);
+    }
+
+    return savedUser.toObject();
   }
 
 
@@ -222,5 +284,61 @@ export class UsersService {
       status: 'SUCCESS',
       newValues: { ids, isActive },
     });
+  }
+
+  async resendInvitation(id: string): Promise<any> {
+    const user = await this.userModel.findOne({ _id: id, isVerified: false, deletedAt: null }).exec();
+    if (!user) {
+      throw new NotFoundException('Pending invitation not found for this user');
+    }
+
+    const verificationToken = RandomNumberGenerator.getUniqueId();
+    const verificationExpires = new Date();
+    verificationExpires.setHours(verificationExpires.getHours() + 48);
+
+    user.verificationToken = verificationToken;
+    user.verificationExpires = verificationExpires;
+    await user.save();
+
+    await this.auditService.log({
+      action: AuditAction.USER_UPDATE,
+      resource: 'users',
+      resourceId: id,
+      ipAddress: 'N/A',
+      status: 'SUCCESS',
+      newValues: { action: 'Resend Invitation', verificationExpires },
+    });
+
+    try {
+      await this.mailService.sendInvitationEmail(user.email, verificationToken, user.firstName);
+    } catch (mailError) {
+      console.error(`[MAIL ERROR] Resending invitation failed for ${user.email}:`, mailError.message);
+    }
+
+    return { message: 'Invitation resent successfully' };
+  }
+
+  async revokeInvitation(id: string): Promise<any> {
+    const user = await this.userModel.findOne({ _id: id, isVerified: false, deletedAt: null }).exec();
+    if (!user) {
+      throw new NotFoundException('Pending invitation not found for this user');
+    }
+
+    // Soft delete is appropriate for revocation
+    user.deletedAt = new Date();
+    user.verificationToken = undefined;
+    user.verificationExpires = undefined;
+    await user.save();
+
+    await this.auditService.log({
+      action: AuditAction.USER_DELETE,
+      resource: 'users',
+      resourceId: id,
+      ipAddress: 'N/A',
+      status: 'SUCCESS',
+      newValues: { action: 'Revoke Invitation' },
+    });
+
+    return { message: 'Invitation revoked successfully' };
   }
 }

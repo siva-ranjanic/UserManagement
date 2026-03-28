@@ -29,7 +29,7 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<UserProfile>;
+  login: (email: string, password: string, forceLogin?: boolean) => Promise<UserProfile>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   setCredentials: (user: UserProfile, accessToken: string, refreshToken: string) => void;
@@ -89,8 +89,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Login
-  const login = useCallback(async (email: string, password: string) => {
-    const data: any = await axiosInstance.post('/auth/login', { email, password });
+  const login = useCallback(async (email: string, password: string, forceLogin: boolean = false) => {
+    const data: any = await axiosInstance.post('/auth/login', { email, password, forceLogin });
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     setState((prev) => ({

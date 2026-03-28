@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getUsers, bulkUpdateStatus } from '../../api/admin.service';
+import { getUsers, bulkUpdateStatus, resendInvitation, revokeInvitation } from '../../api/admin.service';
 import { 
   Search, 
   Filter, 
@@ -11,10 +11,14 @@ import {
   XCircle,
   ChevronLeft,
   ChevronRight,
-  ShieldAlert
+  ShieldAlert,
+  RotateCcw,
+  UserMinus
 } from 'lucide-react';
 import UserModal from './UserModal';
+import InviteUserModal from './InviteUserModal';
 import { softDeleteUser, bulkSoftDelete } from '../../api/admin.service';
+import { useAuth } from '../../context/AuthContext';
 
 
 
@@ -27,12 +31,17 @@ const UserListPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [totalPages, setTotalPages] = useState(1);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin' || 
+                  (Array.isArray(currentUser?.roles) && currentUser.roles.some((r: any) => (typeof r === 'object' ? r.name : r).toLowerCase() === 'admin'));
 
 
   const fetchUsers = async () => {
@@ -101,6 +110,28 @@ const UserListPage: React.FC = () => {
     }
   };
 
+  const handleResend = async (id: string) => {
+    try {
+      await resendInvitation(id);
+      alert('Invitation resent successfully!');
+    } catch (err: any) {
+      console.error('Resend failed:', err);
+      alert(err.message || 'Failed to resend invitation');
+    }
+  };
+
+  const handleRevoke = async (id: string) => {
+    if (!window.confirm('Are you sure you want to revoke this invitation? The user will no longer be able to set their password.')) return;
+    try {
+      await revokeInvitation(id);
+      fetchUsers();
+      alert('Invitation revoked successfully');
+    } catch (err: any) {
+      console.error('Revoke failed:', err);
+      alert(err.message || 'Failed to revoke invitation');
+    }
+  };
+
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -109,13 +140,24 @@ const UserListPage: React.FC = () => {
           <h1 className="text-4xl font-display font-bold tracking-tight mb-2">User List</h1>
           <p className="text-on-surface-variant font-medium text-sm">Manage user accounts and permissions.</p>
         </div>
-        <button 
-          onClick={() => { setSelectedUser(null); setIsModalOpen(true); }}
-          className="btn-primary"
-        >
-          <Plus size={18} />
-          <span>Add New User</span>
-        </button>
+        <div className="flex flex-wrap gap-4">
+          {isAdmin && (
+            <button 
+              onClick={() => setIsInviteModalOpen(true)}
+              className="px-6 py-2 bg-primary/10 text-primary border border-primary/20 rounded-xl text-sm font-bold hover:bg-primary/20 transition-all flex items-center gap-2"
+            >
+              <Plus size={18} />
+              <span>Invite User</span>
+            </button>
+          )}
+          <button 
+            onClick={() => { setSelectedUser(null); setIsModalOpen(true); }}
+            className="btn-primary"
+          >
+            <Plus size={18} />
+            <span>Add New User</span>
+          </button>
+        </div>
       </div>
 
 
@@ -265,21 +307,47 @@ const UserListPage: React.FC = () => {
                     <p className="text-xs font-mono text-on-surface-variant italic">{user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : 'N/A'}</p>
                   </td>
                   <td className="py-6 text-center px-4">
-                    <div className="flex justify-center gap-2 items-center">
-                      <button 
-                        onClick={() => handleEdit(user)}
-                        title="Edit User" 
-                        className="p-2 text-on-surface-variant hover:text-primary transition-colors"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteClick(user)}
-                        title="Delete User" 
-                        className="p-2 text-on-surface-variant hover:text-error transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                    <div className="flex justify-center items-center gap-2">
+                      {/* Standard Actions: Edit & Delete */}
+                      <div className="flex items-center bg-surface-container-low/20 p-1 rounded-xl border border-surface-container-low/40 shadow-sm backdrop-blur-[2px]">
+                        <button 
+                          onClick={() => handleEdit(user)}
+                          title="Edit User Profile" 
+                          className="p-2 text-on-surface-variant/60 hover:text-primary hover:bg-white rounded-lg transition-all duration-300 hover:shadow-md active:scale-95"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteClick(user)}
+                          title="Permanently Delete User" 
+                          className="p-2 text-on-surface-variant/60 hover:text-error hover:bg-white rounded-lg transition-all duration-300 hover:shadow-md active:scale-95"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+
+                      {/* Invitation Lifecycle Actions */}
+                      {!user.isVerified && (
+                        <>
+                          <div className="w-[1.5px] h-5 bg-surface-container-low/60 rounded-full mx-1" />
+                          <div className="flex items-center bg-primary/[0.03] p-1 rounded-xl border border-primary/10 shadow-sm backdrop-blur-[2px]">
+                            <button 
+                              onClick={() => handleResend(user._id)}
+                              title="Resend Invitation Email" 
+                              className="p-2 text-primary/50 hover:text-primary hover:bg-white rounded-lg transition-all duration-300 hover:shadow-md active:scale-95"
+                            >
+                              <RotateCcw size={14} />
+                            </button>
+                            <button 
+                              onClick={() => handleRevoke(user._id)}
+                              title="Revoke / Cancel Invitation" 
+                              className="p-2 text-amber-600/50 hover:text-amber-600 hover:bg-white rounded-lg transition-all duration-300 hover:shadow-md active:scale-95"
+                            >
+                              <UserMinus size={14} />
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -294,6 +362,12 @@ const UserListPage: React.FC = () => {
           onClose={() => setIsModalOpen(false)}
           onSuccess={fetchUsers}
           user={selectedUser}
+        />
+
+        <InviteUserModal 
+          isOpen={isInviteModalOpen}
+          onClose={() => setIsInviteModalOpen(false)}
+          onSuccess={fetchUsers}
         />
 
         {/* Custom Delete Confirmation Modal */}

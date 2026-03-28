@@ -8,6 +8,7 @@ import * as crypto from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto, ResetPasswordDto } from './dto/reset-password.dto';
+import { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import { PasswordReset, PasswordResetDocument } from './password-reset.schema';
 import { Session, SessionDocument } from './session.schema';
 import { RandomNumberGenerator } from '../common/utils/random.generator';
@@ -153,7 +154,54 @@ export class AuthService {
     const roleNames = (user.roles || []).map(r => typeof r === 'object' ? (r as any).name : r);
     const payload = { email: user.email, sub: user._id, roles: roleNames };
     
-    // Create session record — tokenFamily is used for refresh token rotation
+    // Check for active sessions within the last 30 minutes from DIFFERENT devices/IPs
+    const isForceLogin = loginDto.forceLogin === true || (loginDto.forceLogin as any) === 'true';
+    console.log(`[AUTH] Login attempt for ${email} | ForceLogin: ${isForceLogin}`);
+
+    const thirtyMinutesAgo = new Date();
+    thirtyMinutesAgo.setMinutes(thirtyMinutesAgo.getMinutes() - 30);
+
+    const activeSessions = await this.sessionModel.find({ 
+      userId: user._id, 
+      isRevoked: false,
+      lastActivity: { $gte: thirtyMinutesAgo },
+      // Important: don't flag sessions from the same IP AND Device as a "conflict" 
+      $or: [
+        { ipAddress: { $ne: ipAddress } },
+        { device: { $ne: device } }
+      ]
+    }).exec();
+
+    if (activeSessions.length > 0 && !isForceLogin) {
+      await this.auditService.log({
+        actorId: user._id.toString(),
+        action: AuditAction.LOGIN,
+        resource: 'auth',
+        ipAddress,
+        userAgent: device,
+        status: 'FAILURE',
+        errorDetails: 'Concurrent session detected',
+      });
+      // We use a custom property in the exception to signal the frontend
+      throw new UnauthorizedException({
+        statusCode: 409,
+        message: 'You have an active session on another device. Do you want to continue and logout other sessions?',
+        error: 'Conflict',
+        type: 'CONCURRENT_SESSION'
+      });
+    }
+
+    if (isForceLogin) {
+      await this.revokeAllSessions(user._id.toString());
+    } else {
+      // Auto-revoke any stale sessions from this EXACT device/IP to prevent buildup
+      await this.sessionModel.updateMany(
+        { userId: user._id, ipAddress, device, isRevoked: false },
+        { $set: { isRevoked: true } }
+      ).exec();
+    }
+
+    // Create session record
     const tokenFamily = crypto.randomBytes(32).toString('hex');
     const session = new this.sessionModel({
       _id: RandomNumberGenerator.getUniqueId(),
@@ -177,8 +225,8 @@ export class AuthService {
       status: 'SUCCESS',
     });
 
-    // Generate tokens
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+    // Generate tokens - Syncing with 30m session requirement
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '30m' });
     const refreshToken = this.jwtService.sign(
       { sub: user._id, sessionId: session._id, family: tokenFamily },
       { expiresIn: '30d' },
@@ -247,7 +295,7 @@ export class AuthService {
     const roleNames = (user.roles || []).map(r => typeof r === 'object' ? (r as any).name : r);
     const newAccessToken = this.jwtService.sign(
       { email: user.email, sub: user._id, roles: roleNames },
-      { expiresIn: '15m' },
+      { expiresIn: '30m' },
     );
     const newRefreshToken = this.jwtService.sign(
       { sub: user._id, sessionId: session._id, family: newFamily },
@@ -414,6 +462,80 @@ export class AuthService {
       ipAddress,
       status: 'SUCCESS',
       newValues: { isVerified: true },
+    });
+
+    // Auto-login: Create session and generate tokens
+    const tokenFamily = crypto.randomBytes(32).toString('hex');
+    const session = new this.sessionModel({
+      _id: RandomNumberGenerator.getUniqueId(),
+      userId: user._id,
+      tokenFamily,
+      ipAddress,
+      device,
+      lastActivity: new Date(),
+    });
+
+    await session.save();
+
+    const roleNames = (user.roles || []).map(r => typeof r === 'object' ? (r as any).name : r);
+    const payload = { email: user.email, sub: user._id, roles: roleNames };
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+    const refreshToken = this.jwtService.sign(
+      { sub: user._id, sessionId: session._id, family: tokenFamily },
+      { expiresIn: '30d' },
+    );
+
+    const userRoles = user.roles || [];
+    const primaryRole = userRoles.length > 0 
+      ? (typeof userRoles[0] === 'object' ? (userRoles[0] as any).name : userRoles[0])
+      : 'User';
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        roles: user.roles,
+        role: primaryRole
+      },
+    };
+  }
+
+  async acceptInvitation(acceptInvitationDto: AcceptInvitationDto, ipAddress: string, device: string) {
+    const { token, password } = acceptInvitationDto;
+
+    const user = await this.usersService['userModel'].findOne({
+      verificationToken: token,
+      verificationExpires: { $gt: new Date() },
+    }).populate({
+      path: 'roles',
+      populate: { path: 'permissions' }
+    }).exec();
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired invitation token');
+    }
+
+    // Set password and verify
+    const salt = await bcrypt.genSalt();
+    user.passwordHash = await bcrypt.hash(password, salt);
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    user.verificationExpires = undefined;
+    user.passwordChangedAt = new Date();
+    await user.save();
+
+    await this.auditService.log({
+      actorId: user._id.toString(),
+      action: AuditAction.USER_UPDATE,
+      resource: 'users',
+      resourceId: user._id.toString(),
+      ipAddress,
+      status: 'SUCCESS',
+      newValues: { isVerified: true, note: 'Invitation Accepted' },
     });
 
     // Auto-login: Create session and generate tokens
